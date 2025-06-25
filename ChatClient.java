@@ -1,28 +1,28 @@
 import java.io.*;
 import java.net.*;
+import java.util.Scanner;
 
 public class ChatClient {
+    private static final String SERVER_IP = "localhost";
+    private static final int SERVER_PORT = 3355;
+
     public static void main(String[] args) {
-        String serverName = "127.0.0.1";
-        int port = 3355;
+        try (Socket socket = new Socket(SERVER_IP, SERVER_PORT);
+             DataInputStream in = new DataInputStream(socket.getInputStream());
+             DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+             Scanner scanner = new Scanner(System.in)) {
 
-        try {
-            Socket socket = new Socket(serverName, port);
-            DataInputStream in = new DataInputStream(socket.getInputStream());
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-            BufferedReader keyboard = new BufferedReader(new InputStreamReader(System.in));
-
-            // Read welcome message and enter name
+            // Receive server greeting and input name
             System.out.println(in.readUTF());
-            String name = keyboard.readLine();
+            String name = scanner.nextLine();
             out.writeUTF(name);
 
-            // Thread for receiving messages
+            // Start thread to read messages from server
             Thread readThread = new Thread(() -> {
                 try {
                     while (true) {
-                        String response = in.readUTF();
-                        System.out.println(response);
+                        String serverMsg = in.readUTF();
+                        System.out.println(serverMsg);
                     }
                 } catch (IOException e) {
                     System.out.println("Disconnected from server.");
@@ -30,19 +30,16 @@ public class ChatClient {
             });
             readThread.start();
 
-            // Main thread for sending messages
+            // Main loop to send messages to server
             while (true) {
-                String message = keyboard.readLine();
-                out.writeUTF(message);
-                if (message.equalsIgnoreCase("exit")) {
-                    socket.close();
+                String msg = scanner.nextLine();
+                out.writeUTF(msg);
+                if (msg.equalsIgnoreCase("exit")) {
                     break;
-                } else {
-                    System.out.println("me : "+message);
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("Error connecting to server: " + e.getMessage());
         }
     }
 }

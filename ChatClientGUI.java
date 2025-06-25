@@ -1,213 +1,133 @@
 import javax.swing.*;
-import javax.swing.UIManager;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import java.awt.event.*;
 import java.io.*;
 import java.net.*;
 
-public class ChatClientGUI extends JFrame {
+public class ChatClientGUI {
+    private JFrame frame;
     private JTextArea chatArea;
-    private JTextField messageField;
+    private JTextField inputField;
     private JButton sendButton;
-    private JButton connectButton;
-    private JTextField nameField;
-    private JTextField serverField;
-    private JTextField portField;
-    
-    private Socket socket;
+    private JButton createRoomButton, joinRoomButton, leaveRoomButton, kickButton, closeRoomButton, refreshRoomsButton;
+    private DefaultListModel<String> roomListModel;
+    private JList<String> roomList;
+    private String clientName;
     private DataInputStream in;
     private DataOutputStream out;
-    private String clientName;
-    private boolean connected = false;
-    
-    public ChatClientGUI() {
-        initializeGUI();
+    private Socket socket;
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new ChatClientGUI().start());
     }
-    
-    private void initializeGUI() {
-        setTitle("Chat Client");
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
-        
-        // Connection panel
-        JPanel connectionPanel = new JPanel(new FlowLayout());
-        connectionPanel.add(new JLabel("Name:"));
-        nameField = new JTextField(10);
-        connectionPanel.add(nameField);
-        
-        connectionPanel.add(new JLabel("Server:"));
-        serverField = new JTextField("127.0.0.1", 10);
-        connectionPanel.add(serverField);
-        
-        connectionPanel.add(new JLabel("Port:"));
-        portField = new JTextField("3355", 5);
-        connectionPanel.add(portField);
-        
-        connectButton = new JButton("Connect");
-        connectButton.addActionListener(e -> connectToServer());
-        connectionPanel.add(connectButton);
-        
-        add(connectionPanel, BorderLayout.NORTH);
-        
-        // Chat area
-        chatArea = new JTextArea(20, 50);
-        chatArea.setEditable(false);
-        chatArea.setBackground(Color.WHITE);
-        chatArea.setFont(new Font("Arial", Font.PLAIN, 12));
-        JScrollPane scrollPane = new JScrollPane(chatArea);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-        add(scrollPane, BorderLayout.CENTER);
-        
-        // Message input panel
-        JPanel messagePanel = new JPanel(new BorderLayout());
-        messageField = new JTextField();
-        messageField.setEnabled(false);
-        messageField.addActionListener(e -> sendMessage());
-        
-        sendButton = new JButton("Send");
-        sendButton.setEnabled(false);
-        sendButton.addActionListener(e -> sendMessage());
-        
-        messagePanel.add(messageField, BorderLayout.CENTER);
-        messagePanel.add(sendButton, BorderLayout.EAST);
-        add(messagePanel, BorderLayout.SOUTH);
-        
-        // Window close handler
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                disconnect();
-                System.exit(0);
-            }
-        });
-        
-        pack();
-        setLocationRelativeTo(null);
-        setVisible(true);
-    }
-    
-    private void connectToServer() {
-        String name = nameField.getText().trim();
-        String server = serverField.getText().trim();
-        String portText = portField.getText().trim();
-        
-        if (name.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter your name!");
-            return;
-        }
-        
+
+    public void start() {
         try {
-            int port = Integer.parseInt(portText);
-            socket = new Socket(server, port);
+            socket = new Socket("localhost", 3355);
             in = new DataInputStream(socket.getInputStream());
             out = new DataOutputStream(socket.getOutputStream());
-            
-            // Read welcome message and send name
-            String welcomeMessage = in.readUTF();
-            appendToChatArea("Server: " + welcomeMessage);
-            out.writeUTF(name);
-            clientName = name;
-            
-            connected = true;
-            
-            // Enable/disable UI components
-            connectButton.setEnabled(false);
-            nameField.setEnabled(false);
-            serverField.setEnabled(false);
-            portField.setEnabled(false);
-            messageField.setEnabled(true);
-            sendButton.setEnabled(true);
-            messageField.requestFocus();
-            
-            appendToChatArea("Connected to server as: " + clientName);
-            
-            // Start thread for receiving messages
-            Thread readThread = new Thread(this::receiveMessages);
-            readThread.setDaemon(true);
-            readThread.start();
-            
-        } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Invalid port number!");
+
+            clientName = JOptionPane.showInputDialog("Enter your name:");
+            out.writeUTF(clientName);
+
+            createGUI();
+
+            // Listen for server messages
+            new Thread(() -> {
+                try {
+                    while (true) {
+                        String msg = in.readUTF();
+                        chatArea.append(msg + "\n");
+                    }
+                } catch (IOException e) {
+                    chatArea.append("Disconnected from server.\n");
+                }
+            }).start();
         } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "Could not connect to server: " + e.getMessage());
+            JOptionPane.showMessageDialog(null, "Connection error: " + e.getMessage());
         }
     }
-    
-    private void receiveMessages() {
-        try {
-            while (connected && socket != null && !socket.isClosed()) {
-                String message = in.readUTF();
-                SwingUtilities.invokeLater(() -> appendToChatArea(message));
-            }
-        } catch (IOException e) {
-            if (connected) {
-                SwingUtilities.invokeLater(() -> {
-                    appendToChatArea("Disconnected from server.");
-                    disconnect();
-                });
-            }
-        }
+
+    private void createGUI() {
+        frame = new JFrame("Chat Client - " + clientName);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(700, 500);
+        frame.setLayout(new BorderLayout());
+
+        chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        JScrollPane chatScroll = new JScrollPane(chatArea);
+        frame.add(chatScroll, BorderLayout.CENTER);
+
+        inputField = new JTextField();
+        sendButton = new JButton("Send");
+        sendButton.addActionListener(e -> sendMessage());
+
+        JPanel inputPanel = new JPanel(new BorderLayout());
+        inputPanel.add(inputField, BorderLayout.CENTER);
+        inputPanel.add(sendButton, BorderLayout.EAST);
+        frame.add(inputPanel, BorderLayout.SOUTH);
+
+        // Room list and control buttons
+        roomListModel = new DefaultListModel<>();
+        roomList = new JList<>(roomListModel);
+        JScrollPane roomScroll = new JScrollPane(roomList);
+        roomScroll.setPreferredSize(new Dimension(200, 0));
+
+        createRoomButton = new JButton("Create Room");
+        joinRoomButton = new JButton("Join Room");
+        leaveRoomButton = new JButton("Leave Room");
+        kickButton = new JButton("Kick User");
+        closeRoomButton = new JButton("Close Room");
+        refreshRoomsButton = new JButton("Refresh Rooms");
+
+        createRoomButton.addActionListener(e -> {
+            String roomName = JOptionPane.showInputDialog("Enter new room name:");
+            if (roomName != null && !roomName.isBlank()) sendCommand("/create " + roomName);
+        });
+        joinRoomButton.addActionListener(e -> {
+            String selectedRoom = roomList.getSelectedValue();
+            if (selectedRoom != null) sendCommand("/join " + selectedRoom);
+        });
+        leaveRoomButton.addActionListener(e -> sendCommand("/leave"));
+        kickButton.addActionListener(e -> {
+            String user = JOptionPane.showInputDialog("Enter username to kick:");
+            if (user != null && !user.isBlank()) sendCommand("/kick " + user);
+        });
+        closeRoomButton.addActionListener(e -> sendCommand("/close"));
+        refreshRoomsButton.addActionListener(e -> {
+            sendCommand("/rooms");
+            // Note: room list update requires parsing output, kept simple for now
+        });
+
+        JPanel sidePanel = new JPanel();
+        sidePanel.setLayout(new BoxLayout(sidePanel, BoxLayout.Y_AXIS));
+        sidePanel.add(new JLabel("Rooms:"));
+        sidePanel.add(roomScroll);
+        sidePanel.add(createRoomButton);
+        sidePanel.add(joinRoomButton);
+        sidePanel.add(leaveRoomButton);
+        sidePanel.add(kickButton);
+        sidePanel.add(closeRoomButton);
+        sidePanel.add(refreshRoomsButton);
+
+        frame.add(sidePanel, BorderLayout.EAST);
+        frame.setVisible(true);
     }
-    
+
     private void sendMessage() {
-        String message = messageField.getText().trim();
-        if (message.isEmpty() || !connected) {
-            return;
+        String msg = inputField.getText().trim();
+        if (!msg.isEmpty()) {
+            sendCommand(msg);
+            inputField.setText("");
         }
-        
+    }
+
+    private void sendCommand(String msg) {
         try {
-            out.writeUTF(message);
-            messageField.setText("");
-            
-            if (message.equalsIgnoreCase("exit")) {
-                disconnect();
-            } else {
-                appendToChatArea("Me : "+message);
-            }
+            out.writeUTF(msg);
         } catch (IOException e) {
-            appendToChatArea("Error sending message: " + e.getMessage());
-            disconnect();
+            chatArea.append("Failed to send message.\n");
         }
-    }
-    
-    private void disconnect() {
-        connected = false;
-        try {
-            if (out != null) {
-                out.writeUTF("exit");
-            }
-            if (socket != null) {
-                socket.close();
-            }
-        } catch (IOException e) {
-            // Ignore errors during disconnect
-        }
-        
-        // Reset UI
-        connectButton.setEnabled(true);
-        nameField.setEnabled(true);
-        serverField.setEnabled(true);
-        portField.setEnabled(true);
-        messageField.setEnabled(false);
-        sendButton.setEnabled(false);
-        messageField.setText("");
-        
-        appendToChatArea("Disconnected from server.");
-    }
-    
-    private void appendToChatArea(String message) {
-        SwingUtilities.invokeLater(() -> {
-            chatArea.append(message + "\n");
-            chatArea.setCaretPosition(chatArea.getDocument().getLength());
-        });
-    }
-    
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            new ChatClientGUI();
-        });
     }
 }
